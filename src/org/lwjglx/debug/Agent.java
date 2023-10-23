@@ -71,9 +71,12 @@ public class Agent implements ClassFileTransformer, Opcodes {
     }
 
     private boolean excluded(String owner, String name) {
+        final String blah = owner + "." + name;
         for (Pattern p : excludes) {
-            if (p.matcher(owner + "." + name).find())
+            if (p.matcher(blah).find()) {
+                System.err.println("Excluded: " + blah);
                 return true;
+            }
         }
         return false;
     }
@@ -123,7 +126,7 @@ public class Agent implements ClassFileTransformer, Opcodes {
     		"org/apache/",
     		"org/hibernate/",
     		"org/joml/",
-    		"org/lwjgl/",
+            "org/lwjgl/",
     		"org/lwjglx/debug/",
     		"org/springframework/",
     		"sun/"
@@ -179,8 +182,7 @@ public class Agent implements ClassFileTransformer, Opcodes {
                         lastLineNumber = line;
                     }
 
-                    public void visitInvokeDynamicInsn(String dynamicname, String descriptor, Handle bootstrapMethodHandle,
-                    		Object... bootstrapMethodArguments) {
+                    public void visitInvokeDynamicInsn(String dynamicname, String descriptor, Handle bootstrapMethodHandle, Object... bootstrapMethodArguments) {
                     	// detect an invocation of a method through a method reference
                     	// those will always look like having 3 bootstrap method arguments, of which the second is the
                     	// handle to the target method. Once we detect that, we rewrite that handle to point to a generated proxy method
@@ -295,34 +297,54 @@ public class Agent implements ClassFileTransformer, Opcodes {
     /**
      * Based on: https://stackoverflow.com/questions/1247772/is-there-an-equivalent-of-java-util-regex-for-glob-type-patterns#answer-1248627
      */
-    private static String convertGlobToRegEx(String line) {
-        line = line.trim();
-        int strLen = line.length();
-        StringBuilder sb = new StringBuilder(strLen);
-        if (!line.startsWith("*")) {
-            sb.append("^");
+    private static String convertGlobToRegEx(String pattern) {
+        StringBuilder sb = new StringBuilder(pattern.length());
+        int inGroup = 0;
+        int inClass = 0;
+        int firstIndexInClass = -1;
+        char[] arr = pattern.toCharArray();
+        for (int i = 0; i < arr.length; i++) {
+            char ch = arr[i];
+            switch (ch) {
+                case '\\':
+                    if (++i >= arr.length) {
+                        sb.append('\\');
+                    } else {
+                        char next = arr[i];
+                        switch (next) {
+                            case ',':
+                                // escape not needed
+                                break;
+                            case 'Q':
+                            case 'E':
+                                // extra escape needed
+                                sb.append('\\');
+                            default:
+                                sb.append('\\');
         }
-        if (line.endsWith("*")) {
-            line = line.substring(0, strLen - 1);
-            strLen--;
+                        sb.append(next);
         }
-        boolean escaping = false;
-        int inCurlies = 0;
-        for (char currentChar : line.toCharArray()) {
-            switch (currentChar) {
+                    break;
             case '*':
-                if (escaping)
-                    sb.append("\\*");
+                    if (inClass == 0)
+                        sb.append(".*");
                 else
-                    sb.append(".*");
-                escaping = false;
+                        sb.append('*');
                 break;
             case '?':
-                if (escaping)
-                    sb.append("\\?");
+                    if (inClass == 0)
+                        sb.append('.');
                 else
-                    sb.append('.');
-                escaping = false;
+                        sb.append('?');
+                    break;
+                case '[':
+                    inClass++;
+                    firstIndexInClass = i+1;
+                    sb.append('[');
+                    break;
+                case ']':
+                    inClass--;
+                    sb.append(']');
                 break;
             case '.':
             case '(':
@@ -333,47 +355,32 @@ public class Agent implements ClassFileTransformer, Opcodes {
             case '$':
             case '@':
             case '%':
+                    if (inClass == 0 || (firstIndexInClass == i && ch == '^'))
                 sb.append('\\');
-                sb.append(currentChar);
-                escaping = false;
+                    sb.append(ch);
                 break;
-            case '\\':
-                if (escaping) {
-                    sb.append("\\\\");
-                    escaping = false;
-                } else
-                    escaping = true;
+                case '!':
+                    if (firstIndexInClass == i)
+                        sb.append('^');
+                    else
+                        sb.append('!');
                 break;
             case '{':
-                if (escaping) {
-                    sb.append("\\{");
-                } else {
+                    inGroup++;
                     sb.append('(');
-                    inCurlies++;
-                }
-                escaping = false;
                 break;
             case '}':
-                if (inCurlies > 0 && !escaping) {
+                    inGroup--;
                     sb.append(')');
-                    inCurlies--;
-                } else if (escaping)
-                    sb.append("\\}");
-                else
-                    sb.append("}");
-                escaping = false;
                 break;
             case ',':
-                if (inCurlies > 0 && !escaping) {
+                    if (inGroup > 0)
                     sb.append('|');
-                } else if (escaping)
-                    sb.append("\\,");
                 else
-                    sb.append(",");
+                        sb.append(',');
                 break;
             default:
-                escaping = false;
-                sb.append(currentChar);
+                    sb.append(ch);
             }
         }
         return sb.toString();
@@ -409,6 +416,7 @@ public class Agent implements ClassFileTransformer, Opcodes {
                 for (String e : excluded) {
                     excludes.add(Pattern.compile(convertGlobToRegEx(e)));
                 }
+                System.err.println("Excludes: " + excludes);
             }
             if (options.has("debug"))
                 Properties.DEBUG.enable();
@@ -432,6 +440,7 @@ public class Agent implements ClassFileTransformer, Opcodes {
         Agent t = new Agent(excludes);
         instrumentation.addTransformer(t);
         RT.mainThread = Thread.currentThread();
+        RT.excludes = excludes;
     }
 
 }

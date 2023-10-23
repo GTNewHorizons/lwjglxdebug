@@ -39,6 +39,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.lwjgl.PointerBuffer;
 import org.lwjglx.debug.org.lwjgl.opengl.Context;
@@ -76,6 +78,7 @@ public class RT {
 
     public static Thread mainThread;
     public static boolean glfwInitialized;
+    public static Set<Pattern> excludes = Collections.emptySet();
 
     private static void throwIfNotNativeEndianness(ByteOrder order) {
         if (order != null && order != ByteOrder.nativeOrder()) {
@@ -478,6 +481,12 @@ public class RT {
         return buf;
     }
 
+    public static CharBuffer put(CharBuffer buf, String src) {
+        buf.put(src);
+        writeCharBuffer(buf);
+        return buf;
+    }
+
     public static CharBuffer put(CharBuffer buf, char[] src, int offset, int length) {
         buf.put(src, offset, length);
         writeCharBuffer(buf);
@@ -827,9 +836,17 @@ public class RT {
     public static void throwISEOrLogError(String message) {
         throwISEOrLogError(message, true, 2);
     }
-
+    public static boolean checkExcludes(Throwable t) {
+        final String blah = t.getStackTrace()[0].toString();
+        for (Pattern p : RT.excludes) {
+            if (p.matcher(blah).find())
+                return true;
+        }
+        return false;
+    }
     public static void throwISEOrLogError(String message, boolean stacktrace, int offset) {
         IllegalStateException e = filterStackTrace(new IllegalStateException(message), offset);
+        if (checkExcludes(e)) return;
         if (!Properties.NO_THROW_ON_ERROR.enabled) {
             throw e;
         } else {
@@ -843,6 +860,7 @@ public class RT {
 
     public static void throwIAEOrLogError(String message, boolean stacktrace) {
         IllegalArgumentException e = filterStackTrace(new IllegalArgumentException(message), 2);
+        if (checkExcludes(e)) return;
         if (!Properties.NO_THROW_ON_ERROR.enabled) {
             throw e;
         } else {

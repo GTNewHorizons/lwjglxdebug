@@ -106,6 +106,7 @@ public class GLFW {
     }
 
     public static boolean glfwInit() {
+        System.err.println("glfwInit from thread " + Thread.currentThread());
         boolean ret;
         if (Properties.VALIDATE.enabled) {
             debug("Registering GLFWErrorCallback");

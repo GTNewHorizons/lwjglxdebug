@@ -366,6 +366,8 @@ public class Context implements Comparable<Context> {
     }
 
     public static void checkVertexAttributes() {
+        /*
+         MC doesn't use VAOs, TODO: figure out how to detect Tesselator usage
         Context context = currentContext();
         VAO vao = context.currentVao;
         for (int i = 0; i < vao.enabledVertexArrays.length; i++) {
@@ -385,6 +387,7 @@ public class Context implements Comparable<Context> {
         if (vao.texCoordArrayEnabled && !vao.texCoordArrayInitialized) {
             RT.throwISEOrLogError("GL_TEXTURE_COORD_ARRAY enabled but not initialized");
         }
+         */
     }
 
     public static void checkFramebufferCompleteness() {
